@@ -2,9 +2,8 @@ name: News Push Bot
 
 on:
   schedule:
-    # 每天北京时间早上 8:00 运行 (由于服务器在国外，这里填的是 UTC 时间 0:00)
     - cron: '0 0 * * *' 
-  workflow_dispatch: # 加上这行，你的 GitHub 页面就会多出一个手动运行的按钮
+  workflow_dispatch: 
 
 jobs:
   build:
@@ -26,4 +25,5 @@ jobs:
       - name: Run script
         env:
           DINGTALK_WEBHOOK: ${{ secrets.DINGTALK_WEBHOOK }}
+          DEEPSEEK_API_KEY: ${{ sk-70c302a9570d4ee89f2fa5085256f976 }}  # <--- 就是加了这一行！
         run: python main.py
