@@ -17,7 +17,7 @@ NEWS_SOURCES = {
     "Forbes (福布斯市场)": "https://www.forbes.com/markets/feed/"
 }
 
-# 👉 核心监控关键词（涵盖商品、期货、财务舞弊、内控的中英文）
+# 核心监控关键词
 TARGET_KEYWORDS = [
     "期货", "商品", "大宗", "原油", "黄金", "铜", 
     "财务舞弊", "财务造假", "内部控制", "审计",
@@ -70,8 +70,6 @@ def ai_summarize_news(full_text):
 
 def fetch_scholar_research():
     """双引擎抓取谷歌学术：模块A(商品期货) + 模块B(财务舞弊内控)"""
-    
-    # 定义两个不同的学术搜索任务 (scisbd=1 表示按最新时间排序)
     scholar_tasks = {
         "📊 模块A：商品与期货市场": "https://scholar.google.com/scholar?q=%E5%95%86%E5%93%81+%E6%9C%9F%E8%B4%A7&scisbd=1",
         "🚨 模块B：财务舞弊与内部控制": "https://scholar.google.com/scholar?q=%E8%B4%A2%E5%8A%A1%E8%88%9E%E5%BC%8A+%E5%86%85%E9%83%A8%E6%8E%A7%E5%88%B6&scisbd=1"
@@ -88,11 +86,11 @@ def fetch_scholar_research():
             if response.status_code == 200:
                 content = response.text[:6000]
                 
-               prompt = f"""
+                prompt = f"""
                 你是一个专业的学术研究助手。以下是谷歌学术的网页抓取内容。
                 
                 【极其重要的指令】：
-                请首先判断抓取到的文本是否是正常的论文搜索结果。如果文本包含 "429"、"Error"、"系统检测到异常流量"、"robot" 等反爬虫报错信息，请**直接回复“⚠️ 抓取被谷歌学术拦截，暂无真实数据。”**，绝对不允许编造或提供示例论文！
+                请首先判断抓取到的文本是否是正常的论文搜索结果。如果文本包含 "429"、"Error"、"系统检测到异常流量"、"robot" 等反爬虫报错信息，或者内容明显不是论文列表，请**直接回复“⚠️ 抓取被谷歌学术拦截，暂无最新真实数据。”**，绝对不允许编造或提供示例论文！
                 
                 如果文本正常，请按照以下格式输出：
                 **🎓 {topic} 最新焦点**：（一句话概括当前学者们关注的核心）
@@ -130,15 +128,12 @@ def send_dingtalk(text):
     requests.post(DINGTALK_WEBHOOK, data=json.dumps(data), headers=headers)
 
 def fetch_news():
-    # 包含了钉钉安全关键词“新闻”
     final_message = "### 🌍 专属领域情报与新闻简报\n\n"
     
-    # ---------------- 1. 处理谷歌学术模块 ----------------
     print("开始执行学术抓取模块...")
     scholar_report = fetch_scholar_research()
     final_message += scholar_report
     
-    # ---------------- 2. 处理商业新闻模块 ----------------
     print("开始执行外媒新闻模块...")
     has_news = False
     for name, rss_url in NEWS_SOURCES.items():
@@ -146,7 +141,6 @@ def fetch_news():
         source_message = f"#### 📢 {name}\n"
         source_has_news = False
         
-        # 将搜索范围从 15 扩大到 30，增加垂直领域的命中概率
         for entry in feed.entries[:30]:
             title = entry.title
             summary = getattr(entry, 'summary', '')
@@ -165,13 +159,11 @@ def fetch_news():
             source_message += f"**原文**: [{title}]({link})\n"
             source_message += f"> {ai_report}\n\n"
             
-        # 无论有没有命中，都把这个新闻源的模块加到最终消息里
         if source_has_news:
             final_message += source_message
         else:
             final_message += f"#### 📢 {name}\n> 📭 今日前30条最新报道中，暂无符合【商品/期货/内控】等关键词的资讯。\n\n"
             
-    # 推送逻辑判断：只要有任何内容，就发送（包括“暂无新闻”的提示）
     send_dingtalk(final_message)
     print("推送完毕！")
 
