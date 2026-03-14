@@ -25,5 +25,5 @@ jobs:
       - name: Run script
         env:
           DINGTALK_WEBHOOK: ${{ secrets.DINGTALK_WEBHOOK }}
-          DEEPSEEK_API_KEY: ${{ sk-70c302a9570d4ee89f2fa5085256f976 }}  # <--- 就是加了这一行！
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}  # <--- 就是加了这一行！
         run: python main.py
