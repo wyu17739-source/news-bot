@@ -88,16 +88,19 @@ def fetch_scholar_research():
             if response.status_code == 200:
                 content = response.text[:6000]
                 
-                prompt = f"""
-                你是一个专业的学术研究助手。以下是谷歌学术关于特定主题的最新论文搜索结果片段。
+               prompt = f"""
+                你是一个专业的学术研究助手。以下是谷歌学术的网页抓取内容。
                 
-                格式要求：
+                【极其重要的指令】：
+                请首先判断抓取到的文本是否是正常的论文搜索结果。如果文本包含 "429"、"Error"、"系统检测到异常流量"、"robot" 等反爬虫报错信息，请**直接回复“⚠️ 抓取被谷歌学术拦截，暂无真实数据。”**，绝对不允许编造或提供示例论文！
+                
+                如果文本正常，请按照以下格式输出：
                 **🎓 {topic} 最新焦点**：（一句话概括当前学者们关注的核心）
                 **📚 核心论文追踪**：
-                - **《[论文标题]》**：[作者/年份] —— [根据片段总结研究发现或模型]
+                - **《[论文标题]》**：[作者/年份] —— [总结研究发现]
                 - （精选最相关的2篇即可）
                 
-                搜索结果正文：
+                抓取内容：
                 {content}
                 """
                 
@@ -143,8 +146,8 @@ def fetch_news():
         source_message = f"#### 📢 {name}\n"
         source_has_news = False
         
-        # 增加遍历数量，以防垂直领域的文章较少
-        for entry in feed.entries[:15]:
+        # 将搜索范围从 15 扩大到 30，增加垂直领域的命中概率
+        for entry in feed.entries[:30]:
             title = entry.title
             summary = getattr(entry, 'summary', '')
             link = entry.link
@@ -162,15 +165,15 @@ def fetch_news():
             source_message += f"**原文**: [{title}]({link})\n"
             source_message += f"> {ai_report}\n\n"
             
+        # 无论有没有命中，都把这个新闻源的模块加到最终消息里
         if source_has_news:
             final_message += source_message
+        else:
+            final_message += f"#### 📢 {name}\n> 📭 今日前30条最新报道中，暂无符合【商品/期货/内控】等关键词的资讯。\n\n"
             
-    # 推送逻辑判断
-    if has_news or "最新焦点" in scholar_report:
-        send_dingtalk(final_message)
-        print("推送成功！")
-    else:
-        print("今日无符合条件的情报。")
+    # 推送逻辑判断：只要有任何内容，就发送（包括“暂无新闻”的提示）
+    send_dingtalk(final_message)
+    print("推送完毕！")
 
 if __name__ == "__main__":
     fetch_news()
