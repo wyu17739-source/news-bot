@@ -11,13 +11,19 @@ DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
 # 初始化 AI 客户端
 client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
 
+# 替换为 FT 和 福布斯的 RSS 源
 NEWS_SOURCES = {
-    "Bloomberg 市场": "https://feeds.bloomberg.com/markets/news.rss",
-    "CNN 头条": "http://rss.cnn.com/rss/edition.rss"
+    "Financial Times (金融时报)": "https://www.ft.com/markets?format=rss",
+    "Forbes (福布斯市场)": "https://www.forbes.com/markets/feed/"
 }
 
-# 👉 你关心的商业新闻关键词列表
-TARGET_KEYWORDS = ["期货", "商品", "大宗", "原油", "黄金", "美联储", "降息", "oil", "gold", "commodity", "futures"]
+# 👉 核心监控关键词（涵盖商品、期货、财务舞弊、内控的中英文）
+TARGET_KEYWORDS = [
+    "期货", "商品", "大宗", "原油", "黄金", "铜", 
+    "财务舞弊", "财务造假", "内部控制", "审计",
+    "commodity", "futures", "oil", "gold", "copper",
+    "fraud", "internal control", "audit", "scandal", "accounting"
+]
 
 def is_target_news(text):
     text_lower = text.lower()
@@ -31,22 +37,22 @@ def get_full_text(url):
         if response.status_code == 200:
             return response.text
     except Exception as e:
-        print(f"网页抓取失败: {e}")
+        print(f"网页抓取失败 ({url}): {e}")
     return ""
 
 def ai_summarize_news(full_text):
     """AI 处理商业新闻"""
     if not full_text or len(full_text) < 100:
-        return "网页内容过短或抓取失败，无法进行 AI 总结。"
+        return "网页内容过短或抓取受限，无法进行 AI 深度总结。"
         
     content = full_text[:8000] 
     prompt = f"""
-    你是一个专业的金融分析师。请阅读以下这篇新闻的正文，并输出中文总结。
+    你是一个专业的金融与风控分析师。请阅读以下这篇来自顶级财经媒体的新闻正文，并输出中文总结。
     
     格式要求：
-    **🎯 核心结论**：（一句话概括核心信息）
+    **🎯 核心结论**：（一句话概括这篇新闻的最核心信息，特别是对商品市场或公司内控的影响）
     **📝 详细提炼**：
-    - （要点1：需包含具体数据或事件事实）
+    - （要点1：需包含具体数据、公司名称或事件事实）
     - （要点2...）
     
     新闻正文：
@@ -63,69 +69,82 @@ def ai_summarize_news(full_text):
         return "AI 新闻总结出错。"
 
 def fetch_scholar_research():
-    """抓取并总结谷歌学术最新研究"""
-    # 搜索词为“财务舞弊 内部控制”，scisbd=1 表示按最新日期排序
-    scholar_url = "https://scholar.google.com/scholar?q=%E8%B4%A2%E5%8A%A1%E8%88%9E%E5%BC%8A+%E5%86%85%E9%83%A8%E6%8E%A7%E5%88%B6&scisbd=1"
+    """双引擎抓取谷歌学术：模块A(商品期货) + 模块B(财务舞弊内控)"""
     
-    try:
-        print("正在抓取谷歌学术...")
-        jina_url = f"https://r.jina.ai/{scholar_url}"
-        response = requests.get(jina_url, timeout=20)
+    # 定义两个不同的学术搜索任务 (scisbd=1 表示按最新时间排序)
+    scholar_tasks = {
+        "📊 模块A：商品与期货市场": "https://scholar.google.com/scholar?q=%E5%95%86%E5%93%81+%E6%9C%9F%E8%B4%A7&scisbd=1",
+        "🚨 模块B：财务舞弊与内部控制": "https://scholar.google.com/scholar?q=%E8%B4%A2%E5%8A%A1%E8%88%9E%E5%BC%8A+%E5%86%85%E9%83%A8%E6%8E%A7%E5%88%B6&scisbd=1"
+    }
+    
+    academic_report = ""
+    
+    for topic, url in scholar_tasks.items():
+        try:
+            print(f"正在抓取谷歌学术: {topic}")
+            jina_url = f"https://r.jina.ai/{url}"
+            response = requests.get(jina_url, timeout=20)
+            
+            if response.status_code == 200:
+                content = response.text[:6000]
+                
+                prompt = f"""
+                你是一个专业的学术研究助手。以下是谷歌学术关于特定主题的最新论文搜索结果片段。
+                
+                格式要求：
+                **🎓 {topic} 最新焦点**：（一句话概括当前学者们关注的核心）
+                **📚 核心论文追踪**：
+                - **《[论文标题]》**：[作者/年份] —— [根据片段总结研究发现或模型]
+                - （精选最相关的2篇即可）
+                
+                搜索结果正文：
+                {content}
+                """
+                
+                res = client.chat.completions.create(
+                    model="deepseek-chat",
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.3
+                )
+                academic_report += f"#### {topic}\n> {res.choices[0].message.content}\n\n"
+        except Exception as e:
+            print(f"学术抓取失败 ({topic}): {e}")
+            
+    if not academic_report:
+        return "#### 🎓 谷歌学术跟踪\n> 暂无最新学术数据或抓取受限。\n\n---\n"
         
-        if response.status_code == 200:
-            content = response.text[:8000]
-            
-            prompt = f"""
-            你是一个专业的学术研究助手。以下是谷歌学术关于“财务舞弊”与“内部控制”最新论文的搜索结果。
-            请根据提取到的摘要片段，为我输出一份学术简报。
-            
-            格式要求：
-            **🎓 学术界最新研究焦点**：（用一两句话概括最近学者们主要在研究该领域的什么具体问题）
-            **📚 核心论文追踪**：
-            - **《[提炼出的论文标题]》**：[作者/年份] —— [根据片段总结其研究发现或思路]
-            - （列出2-3篇最有价值的即可）
-            
-            搜索结果正文：
-            {content}
-            """
-            
-            res = client.chat.completions.create(
-                model="deepseek-chat",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.3
-            )
-            return f"#### 🎓 谷歌学术跟踪 (财务舞弊 & 内部控制)\n> {res.choices[0].message.content}\n\n---\n"
-    except Exception as e:
-        print(f"学术抓取失败: {e}")
-    return "#### 🎓 谷歌学术跟踪\n> 暂无最新学术数据或抓取受限。\n\n---\n"
+    return academic_report + "---\n"
 
 def send_dingtalk(text):
     headers = {'Content-Type': 'application/json'}
     data = {
         "msgtype": "markdown",
         "markdown": {
-            "title": "综合情报简报", 
+            "title": "专业领域情报简报", 
             "text": text
         }
     }
     requests.post(DINGTALK_WEBHOOK, data=json.dumps(data), headers=headers)
 
 def fetch_news():
-    # 注意：包含了钉钉安全关键词“新闻”
-    final_message = "### 🌍 综合情报与新闻简报\n\n"
+    # 包含了钉钉安全关键词“新闻”
+    final_message = "### 🌍 专属领域情报与新闻简报\n\n"
     
     # ---------------- 1. 处理谷歌学术模块 ----------------
+    print("开始执行学术抓取模块...")
     scholar_report = fetch_scholar_research()
     final_message += scholar_report
     
     # ---------------- 2. 处理商业新闻模块 ----------------
+    print("开始执行外媒新闻模块...")
     has_news = False
     for name, rss_url in NEWS_SOURCES.items():
         feed = feedparser.parse(rss_url)
         source_message = f"#### 📢 {name}\n"
         source_has_news = False
         
-        for entry in feed.entries[:8]:
+        # 增加遍历数量，以防垂直领域的文章较少
+        for entry in feed.entries[:15]:
             title = entry.title
             summary = getattr(entry, 'summary', '')
             link = entry.link
@@ -133,7 +152,7 @@ def fetch_news():
             if not is_target_news(title + " " + summary):
                 continue
                 
-            print(f"命中新闻关键词，正在分析: {title}")
+            print(f"命中目标，正在由 AI 深度分析: {title}")
             source_has_news = True
             has_news = True
             
@@ -146,9 +165,10 @@ def fetch_news():
         if source_has_news:
             final_message += source_message
             
-    # 如果今天有学术更新或命中了新闻，就推送
-    if has_news or "核心论文追踪" in scholar_report:
+    # 推送逻辑判断
+    if has_news or "最新焦点" in scholar_report:
         send_dingtalk(final_message)
+        print("推送成功！")
     else:
         print("今日无符合条件的情报。")
 
