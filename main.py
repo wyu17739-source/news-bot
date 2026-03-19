@@ -11,18 +11,26 @@ DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
 # 初始化 AI 客户端
 client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
 
-# 替换为 FT 和 福布斯的 RSS 源
+# 扩展后的新闻源：涵盖外媒、大宗商品专业频道、全球经济动态
 NEWS_SOURCES = {
     "Financial Times (金融时报)": "https://www.ft.com/markets?format=rss",
-    "Forbes (福布斯市场)": "https://www.forbes.com/markets/feed/"
+    "Forbes (福布斯市场)": "https://www.forbes.com/markets/feed/",
+    "Reuters Commodities (路透大宗商品)": "https://www.reutersagency.com/feed/?best-topics=commodities&post_type=best",
+    "WSJ Economy (华尔街日报经济)": "https://feeds.a.dj.com/rss/WSJBlogEconomy.xml"
 }
 
-# 核心监控关键词
+# 扩展后的核心监控关键词
 TARGET_KEYWORDS = [
-    "期货", "商品", "大宗", "原油", "黄金", "铜", 
-    "财务舞弊", "财务造假", "内部控制", "审计",
-    "commodity", "futures", "oil", "gold", "copper",
-    "fraud", "internal control", "audit", "scandal", "accounting"
+    # 原有：期货/大宗/内控
+    "期货", "商品", "大宗", "原油", "黄金", "铜", "commodity", "futures",
+    "财务舞弊", "内部控制", "审计", "fraud", "internal control", "audit",
+    # 新增：四大事务所 (Big Four)
+    "德勤", "普华永道", "毕马威", "安永", "Deloitte", "PwC", "KPMG", "EY", "Big Four",
+    # 新增：全球大宗商品交易
+    "贸易商", "Trafigura", "Glencore", "Vitol", "仓单", "inventory", "supply chain",
+    # 新增：汇率及利率
+    "汇率", "利率", "美联储", "加息", "降息", "央行", "人民币", "美元指数", 
+    "exchange rate", "interest rate", "Fed", "central bank", "USD", "CNY"
 ]
 
 def is_target_news(text):
@@ -30,7 +38,6 @@ def is_target_news(text):
     return any(keyword.lower() in text_lower for keyword in TARGET_KEYWORDS)
 
 def get_full_text(url):
-    """利用 Jina 抓取网页纯文本正文"""
     try:
         jina_url = f"https://r.jina.ai/{url}"
         response = requests.get(jina_url, timeout=20)
@@ -41,19 +48,18 @@ def get_full_text(url):
     return ""
 
 def ai_summarize_news(full_text):
-    """AI 处理商业新闻"""
     if not full_text or len(full_text) < 100:
         return "网页内容过短或抓取受限，无法进行 AI 深度总结。"
         
     content = full_text[:8000] 
     prompt = f"""
-    你是一个专业的金融与风控分析师。请阅读以下这篇来自顶级财经媒体的新闻正文，并输出中文总结。
+    你是一个专业的金融与风控分析师。请阅读以下新闻正文，输出中文总结。
+    需特别关注：四大行调研、全球大宗商品供需、汇率/利率变动趋势。
     
     格式要求：
-    **🎯 核心结论**：（一句话概括这篇新闻的最核心信息，特别是对商品市场或公司内控的影响）
+    **🎯 核心结论**：（一句话概括核心影响）
     **📝 详细提炼**：
-    - （要点1：需包含具体数据、公司名称或事件事实）
-    - （要点2...）
+    - （事实、数据、政策变动等要点）
     
     新闻正文：
     {content}
@@ -69,100 +75,53 @@ def ai_summarize_news(full_text):
         return "AI 新闻总结出错。"
 
 def fetch_scholar_research():
-    """双引擎抓取谷歌学术：模块A(商品期货) + 模块B(财务舞弊内控)"""
-    scholar_tasks = {
+    """多引擎抓取：学术 + 四大事务所报告"""
+    tasks = {
         "📊 模块A：商品与期货市场": "https://scholar.google.com/scholar?q=%E5%95%86%E5%93%81+%E6%9C%9F%E8%B4%A7&scisbd=1",
-        "🚨 模块B：财务舞弊与内部控制": "https://scholar.google.com/scholar?q=%E8%B4%A2%E5%8A%A1%E8%88%9E%E5%BC%8A+%E5%86%85%E9%83%A8%E6%8E%A7%E5%88%B6&scisbd=1"
+        "🚨 模块B：财务舞弊与内控": "https://scholar.google.com/scholar?q=%E8%B4%A2%E5%8A%A1%E8%88%9E%E5%BC%8A+%E5%86%85%E9%83%A8%E6%8E%A7%E5%88%B6&scisbd=1",
+        "🏛️ 模块C：四大事务所研究报告 (Big 4)": "https://www.google.com/search?q=Deloitte+PwC+EY+KPMG+research+report+2024+2025"
     }
     
     academic_report = ""
-    
-    for topic, url in scholar_tasks.items():
+    for topic, url in tasks.items():
         try:
-            print(f"正在抓取谷歌学术: {topic}")
+            print(f"正在获取: {topic}")
             jina_url = f"https://r.jina.ai/{url}"
             response = requests.get(jina_url, timeout=20)
-            
             if response.status_code == 200:
                 content = response.text[:6000]
-                
-                prompt = f"""
-                你是一个专业的学术研究助手。以下是谷歌学术的网页抓取内容。
-                
-                【极其重要的指令】：
-                请首先判断抓取到的文本是否是正常的论文搜索结果。如果文本包含 "429"、"Error"、"系统检测到异常流量"、"robot" 等反爬虫报错信息，或者内容明显不是论文列表，请**直接回复“⚠️ 抓取被谷歌学术拦截，暂无最新真实数据。”**，绝对不允许编造或提供示例论文！
-                
-                如果文本正常，请按照以下格式输出：
-                **🎓 {topic} 最新焦点**：（一句话概括当前学者们关注的核心）
-                **📚 核心论文追踪**：
-                - **《[论文标题]》**：[作者/年份] —— [总结研究发现]
-                - （精选最相关的2篇即可）
-                
-                抓取内容：
-                {content}
-                """
-                
+                prompt = f"你是一个专业研究助手。请从以下抓取内容中提炼关于【{topic}】的最新的真实研究标题和核心观点。若内容被拦截，请回复“抓取受限”。\n内容：{content}"
                 res = client.chat.completions.create(
                     model="deepseek-chat",
                     messages=[{"role": "user", "content": prompt}],
                     temperature=0.3
                 )
                 academic_report += f"#### {topic}\n> {res.choices[0].message.content}\n\n"
-        except Exception as e:
-            print(f"学术抓取失败 ({topic}): {e}")
-            
-    if not academic_report:
-        return "#### 🎓 谷歌学术跟踪\n> 暂无最新学术数据或抓取受限。\n\n---\n"
-        
+        except:
+            continue
     return academic_report + "---\n"
 
 def send_dingtalk(text):
     headers = {'Content-Type': 'application/json'}
-    data = {
-        "msgtype": "markdown",
-        "markdown": {
-            "title": "专业领域情报简报", 
-            "text": text
-        }
-    }
+    data = {"msgtype": "markdown", "markdown": {"title": "专业领域简报", "text": text}}
     requests.post(DINGTALK_WEBHOOK, data=json.dumps(data), headers=headers)
 
 def fetch_news():
-    final_message = "### 🌍 专属领域情报与新闻简报\n\n"
+    final_message = "### 🌍 综合领域情报与深度简报\n\n"
+    final_message += fetch_scholar_research()
     
-    print("开始执行学术抓取模块...")
-    scholar_report = fetch_scholar_research()
-    final_message += scholar_report
-    
-    print("开始执行外媒新闻模块...")
-    has_news = False
     for name, rss_url in NEWS_SOURCES.items():
         feed = feedparser.parse(rss_url)
         source_message = f"#### 📢 {name}\n"
-        source_has_news = False
-        
-        for entry in feed.entries[:30]:
-            title = entry.title
-            summary = getattr(entry, 'summary', '')
-            link = entry.link
-            
-            if not is_target_news(title + " " + summary):
-                continue
-                
-            print(f"命中目标，正在由 AI 深度分析: {title}")
-            source_has_news = True
-            has_news = True
-            
-            full_article = get_full_text(link)
-            ai_report = ai_summarize_news(full_article)
-            
-            source_message += f"**原文**: [{title}]({link})\n"
-            source_message += f"> {ai_report}\n\n"
-            
-        if source_has_news:
-            final_message += source_message
-        else:
-            final_message += f"#### 📢 {name}\n> 📭 今日前30条最新报道中，暂无符合【商品/期货/内控】等关键词的资讯。\n\n"
+        count = 0
+        for entry in feed.entries[:20]:
+            if count >= 3: break # 每个源最多选3条精华
+            if is_target_news(entry.title + " " + getattr(entry, 'summary', '')):
+                full_article = get_full_text(entry.link)
+                ai_report = ai_summarize_news(full_article)
+                source_message += f"**原文**: [{entry.title}]({entry.link})\n> {ai_report}\n\n"
+                count += 1
+        final_message += source_message
             
     send_dingtalk(final_message)
     print("推送完毕！")
